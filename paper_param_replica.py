@@ -1,81 +1,31 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from hmmlearn.hmm import GaussianHMM
 from scipy.linalg import solve_banded
 
-# --------- 1. LOAD DATA AND EXTRACT REGIMES -------------
-df = pd.read_csv('VIX_History.csv', parse_dates=['DATE'])
-VIX = df['CLOSE'].values.reshape(-1, 1)
+# ------- Manual paper parameters for CIR regimes ------
 regimes = 2
+mu_array      = np.array([0.2, 0.2])
+theta_array   = np.array([18.16, 40.36])
+sigma_array   = np.array([5.33, 6.42])
+# For more visual variety you could try [0.2,0.2], [17.6,39.5], [5.3,6.4]
 
-model = GaussianHMM(n_components=regimes, covariance_type="full", n_iter=100)
-model.fit(VIX)
-hidden_states = model.predict(VIX)
-print("Regime sizes:", [np.sum(hidden_states == i) for i in range(regimes)])
+# "Generator" Q for two-state Markov (paper uses q12=0.1, q21=0.5)
+Q = np.array([[-0.1, 0.1],
+              [ 0.5, -0.5]])
 
-# --------- 2. CIR PARAMETER ESTIMATION BY REGIME ---------
-def cir_ols_params(series):
-    series = np.maximum(series, 3)
-    Y = np.diff(series)
-    X = series[:-1]
-    dt = 1.0
-    if len(X) < 10 or np.all(X == X[0]):
-        return 0.2, np.median(series), 1.2  # fallback: realistic μ/σ for vol
-    A = np.vstack([np.ones(len(X)), -X]).T
-    coeff, _, _, _ = np.linalg.lstsq(A, Y/dt, rcond=None)
-    mu_est = np.clip(coeff[1], 0.15, 1.5)
-    theta_est = np.clip(-coeff[0]/mu_est, 10, 40)
-    # median series for θ if OLS is crazy
-    if theta_est < 8 or theta_est > 50:
-        theta_est = np.median(series)
-    sigma_est = np.clip(np.std(Y / np.sqrt(np.maximum(X, 1))), 0.5, 2.5)
-    return mu_est, theta_est, sigma_est
+cost_entry = 5  # Try 0 and 0.01 to see Figure 2 left/right
+cost_exit  = 5
+r = 0.05
 
-
-params_by_regime = []
-for reg in range(regimes):
-    idx = np.where(hidden_states == reg)[0]
-    series = df['CLOSE'].iloc[idx].values
-    mu, theta, sigma = cir_ols_params(series)
-    params_by_regime.append([mu, theta, sigma])
-    print(f"Regime {reg}: μ={mu:.3f}, θ={theta:.2f}, σ={sigma:.3f}, size={len(series)}")
-
-mu_array = np.array([x[0] for x in params_by_regime])
-theta_array = np.array([x[1] for x in params_by_regime])
-sigma_array = np.array([x[2] for x in params_by_regime])
-
-# --------- 3. Q-GENERATOR: BY RUN-LENGTH (NOT LOG P) -------
-# Calculate average run length in each regime, set Q
-R = []
-for reg in range(regimes):
-    idx = np.where(hidden_states == reg)[0]
-    diff = np.diff(idx)
-    runs = np.split(idx, np.where(diff != 1)[0] + 1)
-    if len(runs) > 0:
-        R.append(np.mean([len(r) for r in runs]))
-    else:
-        R.append(len(idx) if len(idx) > 0 else 1)
-Q = np.zeros((regimes, regimes))
-for i in range(regimes):
-    for j in range(regimes):
-        if i != j:
-            Q[i, j] = 1.0/R[i]
-    Q[i, i] = -1.0/R[i]
-print("\nGenerator Q (estimated):\n", Q)
-
-# --------- 4. SETUP FINITE DIFFERENCE GRIDS -----------
-T = 200       # days
+T = 66    # days to expiry
 N = T*2
-dt = T / N
+dt = T/N
 Smin, Smax = 10, 80
 M = 100
-ds = (Smax - Smin) / M
+ds = (Smax - Smin)/M
 time_grid = np.linspace(0, T, N+1)
 vix_grid = np.linspace(Smin, Smax, M+1)
-cost_exit = 0
-cost_entry = 0
-r = 0.05
 
 num_regimes = regimes
 V = np.zeros((num_regimes, M+1, N+1)) # Exit value function
@@ -85,9 +35,7 @@ J = np.zeros((num_regimes, M+1, N+1)) # Entry value function
 for reg in range(num_regimes):
     for m in range(M+1):
         V[reg, m, N] = vix_grid[m] - cost_exit
-        J[reg, m, N] = 0  # can't enter at expiry
-
-# --------- 6. DOUBLE STOPPING, REGIME-COUPLED PDE SOLVE -----------
+        J[reg, m, N] = 0
 
 def get_coeffs(mu, th, s, sig, dt, ds, r):
     phi = mu * (th - s)
@@ -131,7 +79,6 @@ for n in reversed(range(1, N+1)):
         ab[1,:] = main
         ab[2,:-1] = lower
 
-        # REWARD for entry: (V - (S+cost_entry))+   (skip "+" in code, it's already max'd)
         immediate_entry = np.maximum(V[reg, :, n-1] - (vix_grid + cost_entry), 0)
         rhsJ = np.zeros(M+1)
         for m in range(M+1):
@@ -151,22 +98,35 @@ for reg in range(num_regimes):
             if J[reg, m, n] > 0 and (J[reg, m, n] == V[reg, m, n] - vix_grid[m] - cost_entry):
                 region_map[reg, m, n] = 1
             # SELL: when optimal to exit (V == immediate_exit)
-            elif np.abs(V[reg, m, n] - (vix_grid[m] - cost_exit)) < 1e-6:
+            elif np.abs(V[reg, m, n] - (vix_grid[m] - cost_exit)) < 1e-5:
                 region_map[reg, m, n] = -1
             else:
                 region_map[reg, m, n] = 0  # WAIT
 
-# --------- 8. PLOT: REGION MAP (as in paper figs) --------------
+
+buy_boundary = np.full((num_regimes, N+1), np.nan)
+sell_boundary = np.full((num_regimes, N+1), np.nan)
+for reg in range(num_regimes):
+    for n in range(N+1):
+        buy_idxs = np.where(region_map[reg, :, n] == 1)[0]
+        if buy_idxs.size > 0:
+            buy_boundary[reg, n] = vix_grid[buy_idxs[0]]
+        sell_idxs = np.where(region_map[reg, :, n] == -1)[0]
+        if sell_idxs.size > 0:
+            sell_boundary[reg, n] = vix_grid[sell_idxs[-1]]
+
 fig, axs = plt.subplots(num_regimes, 1, figsize=(11,7), sharex=True)
 for reg in range(num_regimes):
-    # Regions: y=VIX, x=time (reversed axis so t=0 is right as in paper)
     im = axs[reg].imshow(region_map[reg,:,:], aspect='auto', cmap='bwr',
                          extent=[T, 0, Smin, Smax], origin='lower',
                          vmin=-1, vmax=1)
-    axs[reg].set_title(f'Regime {reg+1}: Optimal Trading/Entry Regions')
+    axs[reg].set_title(f'Regime {reg+1}: Optimal Trading/Entry Regions with Boundaries')
     axs[reg].set_ylabel('VIX')
     cbar = plt.colorbar(im, ax=axs[reg], orientation='vertical', ticks=[-1,0,1])
     cbar.ax.set_yticklabels(['SELL','WAIT','BUY'])
+    axs[reg].plot(time_grid, buy_boundary[reg], 'k--', label='Buy entry boundary')
+    axs[reg].plot(time_grid, sell_boundary[reg], 'g--', label='Sell exit boundary')
+    axs[reg].legend()
 axs[-1].set_xlabel('Time to Expiry (days)')
 plt.tight_layout()
 plt.show()

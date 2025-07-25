@@ -1,4 +1,4 @@
-from hmmlearn.hmm import GaussianHMM
+from hmmlearn.hmm import GaussianHMM # type: ignore
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -101,7 +101,7 @@ N = T*2            # number of time steps (2 per day: finer grid)
 dt = T / N            # time increment, in days
 
 # VIX grid: let's cover VIX from 10 to 80
-Smin = 1
+Smin = 10
 Smax = 80
 M = 140             # number of VIX steps (about 0.5 VIX per grid step)
 ds = (Smax - Smin) / M
