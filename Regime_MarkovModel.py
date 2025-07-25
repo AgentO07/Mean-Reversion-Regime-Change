@@ -2,8 +2,9 @@ from hmmlearn.hmm import GaussianHMM
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
 from scipy.linalg import solve_banded
+
+
 
 df = pd.read_csv('VIX_History.csv', parse_dates=['DATE'])
 
