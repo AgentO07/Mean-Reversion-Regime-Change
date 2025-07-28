@@ -17,11 +17,11 @@ regimes = hmm_model.predict(observations)
 
 # ===================== 2. (OPTIONAL) PARAMETER FITTING =====================
 # --- OVERRIDE FOR DEMO: use realistic, test-friendly CIR and Q params
-regime_theta = [14.40, 25.57]
-regime_sigma = [4.0, 8.0]
-regime_kappa = [19.20, 10.46]
-Q = np.array([[-80, 80], [60, -60]])
-c = c_hat = 0.1  # zero cost for diagnostic, can add later
+regime_sigma = [5.33, 6.42]
+regime_theta = [17.58, 29.5]
+regime_kappa = [8.57, 9.0]
+Q = np.array([[-0.1, 0.1], [0.5, -0.5]])
+c = c_hat = 0.01  # zero cost for diagnostic, can add later
 
 # # # --- AUTOMATIC ESTIMATION (uncomment if needed for real-data fit) ----
 # dt = 1/252
@@ -57,15 +57,15 @@ c = c_hat = 0.1  # zero cost for diagnostic, can add later
 #     Q[i, i] = -np.sum(Q[i, :]) + Q[i, i]
 
 # ===================== 3. BUILD PDE GRID =====================
-T = 0.25
-N = 180
+T = 66/252
+N = 120
 dt = T/N
-vix_min, vix_max = 5, 80
-M = 300
+vix_min, vix_max = 5, 60
+M = 200
 ds = (vix_max - vix_min)/(M-1)
 vix_grid = np.linspace(vix_min, vix_max, M)
 time_grid = np.linspace(0, T, N+1)
-r = 0.01
+r = 0.05
 
 futures = np.zeros((n_regimes, N+1, M))
 for i in range(n_regimes):
@@ -193,4 +193,16 @@ plt.title('Optimal Trading Boundaries (by regime and time)')
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
+plt.show()
+
+
+plt.figure(figsize=(8,6))
+t_in_days = np.arange(N+1)
+plt.plot(t_in_days, exit_short_boundary[0, :], 'b--', label=r'$U_1$')
+plt.plot(t_in_days, entry_short_boundary[0, :], 'b-',  label=r'$K_1$')
+plt.plot(t_in_days, exit_short_boundary[1, :], 'r--', label=r'$U_2$')
+plt.plot(t_in_days, entry_short_boundary[1, :], 'r-',  label=r'$K_2$')
+plt.xlabel('time (days)')
+plt.ylabel('VIX')
+plt.legend()
 plt.show()

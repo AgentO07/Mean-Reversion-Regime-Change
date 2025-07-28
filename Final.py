@@ -32,40 +32,15 @@ regimes = hmm_model.predict(observations) #For every day, this gives us an integ
 #sigma – the volatility (standard deviation) of VIX for each regime,
 #kappa – the mean reversion strength (a bit trickier, but we'll do a simple approach).
 
-regime_theta = [] #long term mean
-regime_sigma = [] #stdv vol for vix
-regime_kappa = [] # mean reversion strength
+regime_theta = [17.58, 39.5] #long term mean
+regime_sigma = [5.33, 6.42] #stdv vol for vix
+regime_kappa = [8.57, 9.0] # mean reversion strength
 
 dt = 1/252  # Assume daily data, 252 trading days per year
 
 # Discount rate (annualized, e.g. 1% per year)
-r = 0.01  # <-- SET AT TOP LEVEL, or any value you want to try
+r = 0.05  # <-- SET AT TOP LEVEL, or any value you want to try
 
-for i in range(n_regimes):
-    idx = (regimes == i) #idx gives us the days in that regime,
-    S = vix_values[idx] #S is the sequence of VIX values during those days.
-
-    theta = np.mean(S)
-    sigma = np.std(np.diff(S)) / np.sqrt(np.mean(S))  # crude CIR volatility estimate
-
-    # refer to Discretizing for Estimation in the paper
-
-
-    if len(S) > 1:
-        dS = np.diff(S)
-        S_lag = S[:-1]
-        # Simple OLS to fit dS = kappa*(theta - S_lag)*dt
-        X = (theta - S_lag) * dt
-        Y = dS
-        kappa = np.sum(X*Y) / np.sum(X*X)
-    else:
-        kappa = 1.0  # fallback if not enough data
-
-    regime_theta.append(theta)
-    regime_sigma.append(sigma)
-    regime_kappa.append(max(kappa, 1e-3))  # enforce kappa > 0
-
-    print(f"Regime {i}: theta={regime_theta[i]:.2f}, sigma={regime_sigma[i]:.2f}, kappa={regime_kappa[i]:.2f}")
 
 
 # REGIME TRANSITION MATRIX
@@ -78,29 +53,23 @@ transition_probs = transition_counts / transition_counts.sum(axis=1, keepdims=Tr
 
 #Each row is normalized to sum to 1. For regime i, the row tells you the probability of staying (Q[i,i]) or switching (Q[i,j]) in one day.
 
-Q = np.zeros((n_regimes, n_regimes))
-for i in range(n_regimes):
-    for j in range(n_regimes):
-        if i != j:
-            Q[i,j] = transition_probs[i,j] / dt  # estimated jumps per year
-    Q[i,i] = -np.sum(Q[i,:]) + Q[i,i]  # ensure rows sum to 0
-
+Q = np.array([[-0.1,0.1],[0.5,-0.5]])
 #Q[i, j] * (f_j - f_i) So if Q[0,1] = 0.5, and the value of future in regime 0
 #is 18, in regime 1 is 33, the extra term is: 0.5 * (33 – 18) = 0.5 × 15 = 7.5 interpreted as the effect of potentially jumping to the other regime.
 
 
 
 # Building the Discrete Grid for the PDE
-c = 0.0     # transaction cost when closing long or opening short
-c_hat = 0.0 # transaction cost when opening long or closing short
+c = 0.01     # transaction cost when closing long or opening short
+c_hat = 0.01 # transaction cost when opening long or closing short
 
 # Length of contract in years
-T = 0.25          # 3 months
-N = 180            # 90 time steps (days)
+T = 66/252          # 3 months
+N = 120            # 90 time steps (days)
 dt = T / N        # time step size/ it is the delta per time step
 
-vix_min, vix_max = 5, 80
-M = 300           # 150 grid points for VIX
+vix_min, vix_max = 10, 70
+M = 200           # 150 grid points for VIX
 ds = (vix_max - vix_min) / (M - 1) # vix spacing
 vix_grid = np.linspace(vix_min, vix_max, M)
 time_grid = np.linspace(0, T, N+1)
@@ -334,7 +303,7 @@ for i in range(n_regimes):
         else:
             entry_long_boundary[i, t] = np.nan
 
-            
+
 exit_long_boundary = np.full((n_regimes, N+1), np.nan)
 for i in range(n_regimes):
     for t in range(N+1):

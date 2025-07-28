@@ -170,3 +170,30 @@ for reg in range(num_regimes):
 axs[-1].set_xlabel('Time to Expiry (days)')
 plt.tight_layout()
 plt.show()
+
+
+'''for i in range(n_regimes):
+    idx = (regimes == i) #idx gives us the days in that regime,
+    S = vix_values[idx] #S is the sequence of VIX values during those days.
+
+    theta = np.mean(S)
+    sigma = np.std(np.diff(S)) / np.sqrt(np.mean(S))  # crude CIR volatility estimate
+
+    # refer to Discretizing for Estimation in the paper
+
+
+    if len(S) > 1:
+        dS = np.diff(S)
+        S_lag = S[:-1]
+        # Simple OLS to fit dS = kappa*(theta - S_lag)*dt
+        X = (theta - S_lag) * dt
+        Y = dS
+        kappa = np.sum(X*Y) / np.sum(X*X)
+    else:
+        kappa = 1.0  # fallback if not enough data
+
+    regime_theta.append(theta)
+    regime_sigma.append(sigma)
+    regime_kappa.append(max(kappa, 1e-3))  # enforce kappa > 0
+
+    print(f"Regime {i}: theta={regime_theta[i]:.2f}, sigma={regime_sigma[i]:.2f}, kappa={regime_kappa[i]:.2f}")'''
