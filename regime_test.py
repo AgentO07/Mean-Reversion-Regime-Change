@@ -60,7 +60,7 @@ for regime in [0, 1]:
     ax[0].plot(test_df['DATE'][idx], test_df['VIX_CLOSE'][idx], '.', label=f'Out-of-sample {labels[regime]}', color=colors[regime], alpha=0.7)
 
 ax[0].set_ylabel('VIX Close')
-ax[0].set_title('VIX Close Out-of-Sample Regimes (Trained 1990-2015)')
+ax[0].set_title(f'VIX Close Out-of-Sample Regimes (Trained 1990-{train_end})')
 ax[0].legend()
 
 # Plot VIX w/color by regime - In-Sample

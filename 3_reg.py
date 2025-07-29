@@ -31,7 +31,7 @@ df['SPX_REALIZED_VOL'] = df['SPX_LOG_RETURN'].rolling(window).std()
 df_clean = df.dropna(subset=['SPX_LOG_RETURN', 'SPX_REALIZED_VOL']).reset_index(drop=True)
 
 # Define train/test split at end of 2015
-train_end = pd.Timestamp('2015-12-31')
+train_end = pd.Timestamp('2020-12-31')
 train_df = df_clean[df_clean['DATE'] <= train_end].copy()  # Train data: 1990 - 2015
 test_df  = df_clean[df_clean['DATE'] > train_end].copy()   # Test data: 2016 onward
 
@@ -39,8 +39,10 @@ test_df  = df_clean[df_clean['DATE'] > train_end].copy()   # Test data: 2016 onw
 X_train = train_df[['VIX_CLOSE', 'SPX_REALIZED_VOL']].values
 X_full  = df_clean[['VIX_CLOSE', 'SPX_REALIZED_VOL']].values  # For full-data training later
 
+
+
 # Train Gaussian HMM on training data (2 hidden regimes)
-model_train = GaussianHMM(n_components=3, covariance_type='full', n_iter=100, random_state=42)
+model_train = GaussianHMM(n_components=3, covariance_type='full', n_iter=150, random_state=42)
 model_train.fit(X_train)
 
 # Predict hidden regimes on test data using model trained only on 1990–2015
@@ -48,15 +50,27 @@ X_test = test_df[['VIX_CLOSE', 'SPX_REALIZED_VOL']].values
 test_regimes_outsample = model_train.predict(X_test)
 
 # Train another HMM on full dataset (for in-sample prediction)
-model_full = GaussianHMM(n_components=3, covariance_type='full', n_iter=100, random_state=42)
+model_full = GaussianHMM(n_components=3, covariance_type='full', n_iter=150, random_state=42)
 model_full.fit(X_full)
 
 # Predict regimes again (in-sample), on the same test period
 test_regimes_insample = model_full.predict(X_full[df_clean['DATE'] > train_end])
 
-# Add regime predictions to test dataframe for side-by-side comparison
+#### MAP REGIMES TO CONSISTENT ORDER BY MEAN VIX ####
+# Assign predicted regimes to DataFrame
 test_df['Regime_OutOfSample'] = test_regimes_outsample
 test_df['Regime_InSample'] = test_regimes_insample
+
+# Remap regime labels by mean VIX
+def remap_regimes_by_mean_vix(df_subset, regime_col_name):
+    regime_stats = df_subset.groupby(regime_col_name)['VIX_CLOSE'].mean()
+    sorted_regimes = regime_stats.sort_values().index.tolist()
+    mapping = {old_label: new_label for new_label, old_label in enumerate(sorted_regimes)}
+    return df_subset[regime_col_name].map(mapping)
+
+# Now apply the remapping
+test_df['Regime_OutOfSample'] = remap_regimes_by_mean_vix(test_df, 'Regime_OutOfSample')
+test_df['Regime_InSample'] = remap_regimes_by_mean_vix(test_df, 'Regime_InSample')
 
 
 #### VISUALIZE ####
@@ -75,7 +89,7 @@ for regime in [0, 1, 2]:
                label=f'Out-of-sample {labels[regime]}', color=colors[regime], alpha=0.7)
 
 ax[0].set_ylabel('VIX Close')
-ax[0].set_title('VIX Close Out-of-Sample Regimes (Trained 1990-2015)')
+ax[0].set_title(f'VIX Close Out-of-Sample Regimes (Trained 1990-{train_end})')
 ax[0].legend()
 
 # IN-SAMPLE: plot VIX Close values colored by regime (from model trained on all data)
