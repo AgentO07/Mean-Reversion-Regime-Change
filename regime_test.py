@@ -83,3 +83,32 @@ print(test_df[['DATE','VIX_CLOSE','SPX_REALIZED_VOL','Regime_OutOfSample','Regim
 # Compare actual differences
 comparison = test_df['Regime_OutOfSample'] != test_df['Regime_InSample']
 print("Discrepancies between in-sample and out-of-sample regime predictions:", comparison.sum())
+
+
+#### SCATTERPLOT COMPARISON ####
+'''
+fig, ax = plt.subplots(1, 2, figsize=(16, 6), sharex=True, sharey=True)
+
+# Scatterplot: Out-of-sample regimes
+for regime in [0, 1]:
+    idx = test_df['Regime_OutOfSample'] == regime
+    ax[0].scatter(test_df['VIX_CLOSE'][idx], test_df['SPX_REALIZED_VOL'][idx], 
+                  color=colors[regime], label=labels[regime], alpha=0.6)
+ax[0].set_title('Out-of-Sample Regime Classification')
+ax[0].set_xlabel('VIX Close')
+ax[0].set_ylabel('SPX Realized Volatility')
+ax[0].legend()
+
+# Scatterplot: In-sample regimes
+for regime in [0, 1]:
+    idx = test_df['Regime_InSample'] == regime
+    ax[1].scatter(test_df['VIX_CLOSE'][idx], test_df['SPX_REALIZED_VOL'][idx], 
+                  color=colors[regime], label=labels[regime], alpha=0.4)
+ax[1].set_title('In-Sample Regime Classification')
+ax[1].set_xlabel('VIX Close')
+ax[1].legend()
+
+plt.suptitle('Scatterplot of Regimes by VIX vs. Realized Volatility', fontsize=16)
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+plt.show()
+'''
